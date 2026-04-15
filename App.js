@@ -1,1 +1,563 @@
-import { useState, useEffect, useReducer, useRef } from "react";  const MP=[   [6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],   [0,6],[0,7],[0,8],[1,8],[2,8],[3,8],[4,8],[5,8],   [6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],   [8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],   [14,7],[14,6],[13,6],[12,6],[11,6],[10,6],[9,6],   [8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0] ]; const PC={   red: {si:0, c:'#ef4444',hc:[[7,1],[7,2],[7,3],[7,4],[7,5]],tp:[[1,1],[3,1],[1,3],[3,3]]},   blue:{si:13,c:'#3b82f6',hc:[[1,7],[2,7],[3,7],[4,7],[5,7]],tp:[[1,10],[3,10],[1,12],[3,12]]},   green:{si:26,c:'#22c55e',hc:[[7,13],[7,12],[7,11],[7,10],[7,9]],tp:[[11,10],[13,10],[11,12],[13,12]]},   yell:{si:39,c:'#f59e0b',hc:[[13,7],[12,7],[11,7],[10,7],[9,7]],tp:[[11,1],[13,1],[11,3],[13,3]]}, }; const SAFE=new Set([0,8,13,21,26,34,39,47]); const PO=['red','blue','green','yell']; const CS=36;  const coord=(pk,p)=>p<0||p>=57?null:p<52?MP[(PC[pk].si+p)%52]:PC[pk].hc[p-52]; const isSafe=(pk,p)=>p<0||p>=52||SAFE.has((PC[pk].si+p)%52); const getMovable=(pk,tokens,d)=>tokens.filter(t=>t.p<57&&(t.p<0?d===6:t.p+d<=57)).map(t=>t.id);  const applyMove=(players,pk,tid,d,actP)=>{   const tok=players[pk].tokens.find(t=>t.id===tid);   const np=tok.p<0?0:tok.p+d;   let r={...players,[pk]:{...players[pk],tokens:players[pk].tokens.map(t=>t.id===tid?{...t,p:np}:t)}};   if(np<52&&!SAFE.has((PC[pk].si+np)%52)){     const nc=MP[(PC[pk].si+np)%52];     actP.forEach(ok=>{       if(ok===pk)return;       r[ok]={...r[ok],tokens:r[ok].tokens.map(t=>{         if(t.p<0||t.p>=52)return t;         const oc=MP[(PC[ok].si+t.p)%52];         return(oc[0]===nc[0]&&oc[1]===nc[1])?{...t,p:-1}:t;       })};     });   }   return r; }; const isWin=ts=>ts.every(t=>t.p>=57);  const pickAI=(pk,tokens,d,players,actP,level)=>{   const mv=getMovable(pk,tokens,d);   if(!mv.length)return null;   if(level==='easy'||mv.length===1)return mv[(Math.random()mv.length)];   return scored[0].id; };  const advTurn=(s,extra,actP)=>{   if(extra){const pk=actP[s.ci];return{...s,dice:null,rolled:false,mv:[],msg:${s.pl[pk].name} gets extra turn! 🎲};}   const ni=(s.ci+1)%actP.length;   return{...s,ci:ni,dice:null,rolled:false,mv:[],msg:${s.pl[actP[ni]].name}'s turn! 🎲}; };  function reducer(s,a){   switch(a.t){     case'INIT':return{pl:a.players,ci:0,dice:null,rolled:false,mv:[],winner:null,       msg:${a.players[a.actP[0]].name}'s turn! 🎲};     case'ROLL':{const pk=a.actP[s.ci];const mv=getMovable(pk,s.pl[pk].tokens,a.d);       return{...s,dice:a.d,rolled:true,mv,msg:mv.length?${s.pl[pk].name} rolled ${a.d} — pick a token!:${s.pl[pk].name} rolled ${a.d} — no moves!};}     case'PASS':return advTurn(s,s.dice===6,a.actP);     case'MOVE':{const pk=a.actP[s.ci],d=s.dice;const np=applyMove(s.pl,pk,a.tid,d,a.actP);       if(isWin(np[pk].tokens))return{...s,pl:np,winner:pk,mv:[],rolled:false,msg:🏆 ${np[pk].name} WINS!};       return advTurn({...s,pl:np,mv:[],rolled:false},d===6,a.actP);}   }return s; }  const CK=(c,r)=>${c},${r}; const CELLS=(()=>{const m={};   MP.forEach(([c,r],i)=>m[CK(c,r)]={t:'path',i,safe:SAFE.has(i)});   PO.forEach(pk=>PC[pk].hc.forEach(([c,r])=>m[CK(c,r)]={t:'hc',pk}));   m['7,7']={t:'center'};return m; })();  const cellBg=(c,r,dark,neon)=>{   if(c<6&&r<6)return dark?'#3d1010':'#fee2e2';   if(c<6&&r>=9)return dark?'#0c1730':'#dbeafe';   if(c>=9&&r>=9)return dark?'#0a2010':'#dcfce7';   if(c>=9&&r<6)return dark?'#2d1e00':'#fef9c3';   const cell=CELLS[CK(c,r)];   if(!cell)return dark?'#1a2332':'#e2e8f0';   if(cell.t==='hc'){const pal={red:'#ef4444',blue:'#3b82f6',green:'#22c55e',yell:'#f59e0b'};return pal[cell.pk]+(dark?'28':'1e');}   if(cell.t==='path'){     if(cell.safe)return neon?'#4ade8050':'#fde04788';     if(c===6&&r>=1&&r<=5)return dark?'#2d1010':'#fff0f0';     if(r===8&&c>=1&&c<=5)return dark?'#0e1d35':'#eff6ff';     if(c===8&&r>=9&&r<=13)return dark?'#0b1e11':'#f0fff5';     if(r===6&&c>=9&&c<=13)return dark?'#251a04':'#fffbeb';     return dark?'#1e293b':'#f1f5f9';   }   return dark?'#1e293b':'#f1f5f9'; };  function Board({gs,actP,dark,neon,onTok}){   const SZ=CS15,counts={},toks=[];   actP.forEach(pk=>{gs.pl[pk].tokens.forEach(t=>{     let x,y;     if(t.p<0){const[tc,tr]=PC[pk].tp[t.id];x=tcCS+CS/2;y=trCS+CS/2;}     else if(t.p>=57){const o=[[0,-9],[9,0],[0,9],[-9,0]];x=7CS+CS/2+o[t.id][0];y=7CS+CS/2+o[t.id][1];}     else{const[cc,cr]=coord(pk,t.p);const k=CK(cc,cr);const c=counts[k]||0;counts[k]=c+1;       const o=[[0,0],[-5,0],[5,0],[0,-5]];x=ccCS+CS/2+o[c][0];y=crCS+CS/2+o[c][1];}     const can=!gs.winner&&gs.mv.includes(t.id)&&actP[gs.ci]===pk;     toks.push({pk,id:t.id,x,y,can});   });});   return(     <div style={{position:'relative',width:SZ,height:SZ,flexShrink:0,borderRadius:6,       boxShadow:'0 8px 40px rgba(0,0,0,.6)',border:2px solid ${dark?'#334155':'#cbd5e1'},overflow:'hidden'}}>       <div style={{display:'grid',gridTemplateColumns:repeat(15,${CS}px),gridTemplateRows:repeat(15,${CS}px),position:'absolute',inset:0}}>         {Array.from({length:225},(_,i)=>{           const c=i%15,r=(Math.random()*6)+1);       if(++n>=6){         clearInterval(iv);         const f=(Math.random()6)+1;         const mv=getMovable(pk,s.pl[pk].tokens,d);         dispatch({t:'ROLL',d,actP});         if(mv.length){           setTimeout(()=>{             const s2=ref.current;if(!s2||s2.winner)return;             const tid=pickAI(pk,s2.pl[pk].tokens,d,s2.pl,actP,s2.pl[pk].ai);             dispatch(tid!=null?{t:'MOVE',tid,actP}:{t:'PASS',actP});           },700);         }else setTimeout(()=>dispatch({t:'PASS',actP}),1000);       },900);       return()=>clearTimeout(t);     }   // eslint-disable-next-line   },[gs?.ci,gs?.rolled,screen]);    const bg=dark?'linear-gradient(135deg,#0f172a,#1a1440)':'linear-gradient(135deg,#eff6ff,#f0fdf4)';   const tx=dark?'white':'#1e293b';   const card={background:dark?'rgba(255,255,255,.06)':'rgba(0,0,0,.05)',borderRadius:16};    if(screen==='menu')return(     <div style={{minHeight:'100vh',background:bg,display:'flex',flexDirection:'column',       alignItems:'center',justifyContent:'center',fontFamily:"'Segoe UI',sans-serif",       color:tx,padding:20,gap:14}}>       <style>{        @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}         @keyframes bop{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}         @keyframes pop{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}         button:hover:not(:disabled){transform:translateY(-2px)!important;filter:brightness(1.08)!important}      }</style>        {bonus&&(         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',display:'flex',           alignItems:'center',justifyContent:'center',zIndex:100}}>           <div style={{background:dark?'#1e293b':'white',borderRadius:24,padding:32,textAlign:'center',             width:290,boxShadow:'0 20px 60px rgba(0,0,0,.5)',animation:'pop .3s ease',color:tx}}>             <div style={{fontSize:56,animation:'bop 1.5s infinite'}}>🎁</div>             <h2 style={{margin:'10px 0 4px'}}>Daily Bonus!</h2>             <p style={{opacity:.55,margin:'0 0 14px',fontSize:13}}>Welcome back! Claim your reward.</p>             <div style={{fontSize:38,fontWeight:900,color:'#f59e0b',marginBottom:18}}>+100 🪙</div>             <Btn ch="Claim Bonus 🎉" g="linear-gradient(135deg,#f59e0b,#d97706)"               onClick={()=>{setProfile(p=>({...p,coins:p.coins+100}));setBonus(false);}}/>           </div>         </div>       )}        <div style={{fontSize:70,animation:'bop 2s infinite'}}>🎲</div>       <h1 style={{fontSize:52,fontWeight:900,margin:'0 0 2px',letterSpacing:3,         background:'linear-gradient(135deg,#f43f5e,#8b5cf6)',         WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>LUDO</h1>       <p style={{opacity:.4,margin:'0 0 6px',fontSize:12,letterSpacing:3}}>ULTIMATE EDITION</p>        <div style={{display:'flex',gap:18,...card,padding:'10px 22px',fontSize:13}}>         <span>👤 {profile.name}</span><span>🪙 {profile.coins}</span><span>🏆 {profile.wins}</span>       </div>        <div style={{display:'flex',flexDirection:'column',gap:10,width:260}}>         <Btn ch="🎮 Play Game" g="linear-gradient(135deg,#6366f1,#8b5cf6)" onClick={()=>setScreen('setup')}/>         <Btn ch="🎁 Daily Bonus" g="linear-gradient(135deg,#f59e0b,#ef4444)" onClick={()=>setBonus(true)}/>         <div style={{display:'flex',gap:10}}>           <Btn ch={dark?'☀️ Light':'🌙 Dark'} onClick={()=>setDark(d=>!d)}             g={dark?'#334155':'#94a3b8'} s={{flex:1}}/>           <Btn ch={neon?'🌿 Classic':'⚡ Neon'} onClick={()=>setNeon(n=>!n)}             g="linear-gradient(135deg,#0891b2,#0e7490)" s={{flex:1}}/>         </div>       </div>       <p style={{fontSize:11,opacity:.25,marginTop:4}}>🌍 Online multiplayer · 🏆 Tournaments · Coming soon</p>     </div>   );    if(screen==='setup')return(     <div style={{minHeight:'100vh',background:dark?'#0f172a':'#f8fafc',color:tx,       fontFamily:"'Segoe UI',sans-serif",padding:20,display:'flex',flexDirection:'column',       alignItems:'center',gap:12,overflowY:'auto'}}>       <style>{button:hover:not(:disabled){transform:translateY(-1px)!important}}</style>       <h2 style={{margin:'8px 0',fontSize:22}}>⚙️ Game Setup</h2>       <div style={{display:'flex',alignItems:'center',gap:10,...card,padding:'8px 16px'}}>         <span style={{fontSize:13,opacity:.7}}>Players:</span>         {[2,3,4].map(n=>(           <button key={n} onClick={()=>setNumP(n)} style={{width:38,height:38,borderRadius:9,border:'none',             background:numP===n?'#6366f1':(dark?'#334155':'#e2e8f0'),color:numP===n?'white':tx,             cursor:'pointer',fontWeight:'bold',fontSize:16}}>{n}</button>         ))}       </div>       {PO.slice(0,numP).map(pk=>(         <div key={pk} style={{background:dark?'#1e293b':'white',borderRadius:16,padding:14,           width:'100%',maxWidth:320,borderLeft:4px solid ${PC[pk].c},           display:'flex',flexDirection:'column',gap:8,boxSizing:'border-box',           boxShadow:'0 2px 12px rgba(0,0,0,.15)'}}>           <div style={{display:'flex',alignItems:'center',gap:8}}>             <Chip color={PC[pk].c} size={18}/>             <b style={{fontSize:14,textTransform:'capitalize'}}>{pk==='yell'?'Yellow':pk}</b>           </div>           <input value={setup[pk].name} onChange={e=>setSetup(s=>({...s,[pk]:{...s[pk],name:e.target.value}}))}             style={{padding:'7px 10px',borderRadius:8,border:1px solid ${dark?'#475569':'#cbd5e1'},               background:dark?'#0f172a':'#f8fafc',color:tx,fontSize:13,width:'100%',boxSizing:'border-box'}}/>           <div style={{display:'flex',gap:6}}>             {['human','ai'].map(tp=>(               <button key={tp} onClick={()=>setSetup(s=>({...s,[pk]:{...s[pk],type:tp}}))} style={{                 flex:1,padding:'6px',border:'none',borderRadius:8,cursor:'pointer',fontSize:12,                 background:setup[pk].type===tp?PC[pk].c:(dark?'#334155':'#e2e8f0'),                 color:setup[pk].type===tp?'white':tx}}>                 {tp==='human'?'👤 Human':'🤖 AI'}               </button>             ))}           </div>           {setup[pk].type==='ai'&&(             <div style={{display:'flex',gap:5}}>               {['easy','medium','hard'].map(lv=>(                 <button key={lv} onClick={()=>setSetup(s=>({...s,[pk]:{...s[pk],ai:lv}}))} style={{                   flex:1,padding:'4px 2px',border:'none',borderRadius:7,cursor:'pointer',fontSize:11,                   background:setup[pk].ai===lv?'#f59e0b':(dark?'#334155':'#e2e8f0'),                   color:setup[pk].ai===lv?'white':tx,textTransform:'capitalize'}}>{lv}</button>               ))}             </div>           )}         </div>       ))}       <div style={{display:'flex',gap:10,marginTop:4}}>         <Btn ch="← Back" onClick={()=>setScreen('menu')} g={dark?'#334155':'#e2e8f0'} s={{color:tx}}/>         <Btn ch="Start Game! 🚀" g="linear-gradient(135deg,#6366f1,#8b5cf6)" onClick={startGame}/>       </div>     </div>   );    if(screen==='playing'&&gs){     const pk=actP[gs.ci];     const isH=gs.pl[pk]?.type==='human';     const dval=rolling?animD:gs.dice;     return(       <div style={{minHeight:'100vh',background:dark?'#0f172a':'#f1f5f9',color:tx,         fontFamily:"'Segoe UI',sans-serif",display:'flex',flexDirection:'column',         alignItems:'center',gap:10,padding:'10px 8px',overflowX:'hidden'}}>         <style>{          @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}           @keyframes bop{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}           @keyframes pop{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}           @keyframes floatUp{from{opacity:1;transform:translate(-50%,-50%) scale(1)}to{opacity:0;transform:translate(-50%,-120%) scale(1.3)}}           button:hover:not(:disabled){transform:translateY(-1px)!important}        }</style>          {gs.winner&&(           <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',display:'flex',             flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:200,animation:'pop .3s ease'}}>             <div style={{fontSize:90,animation:'bop 1s infinite'}}>🏆</div>             <h1 style={{color:PC[gs.winner].c,fontSize:42,margin:'10px 0 4px',               textShadow:0 0 30px ${PC[gs.winner].c}}}>{gs.pl[gs.winner].name} WINS!</h1>             <p style={{color:'white',opacity:.5,marginBottom:28,fontSize:14}}>+100 coins 🪙</p>             <div style={{display:'flex',gap:12}}>               <Btn ch="Play Again 🎮" g="linear-gradient(135deg,#6366f1,#8b5cf6)" onClick={()=>{                 setProfile(p=>({...p,coins:p.coins+100,wins:p.wins+1}));startGame();}}/>               <Btn ch="Menu 🏠" onClick={()=>setScreen('menu')}/>             </div>           </div>         )}          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',maxWidth:560}}>           <button onClick={()=>setScreen('menu')} style={{background:'none',border:'none',cursor:'pointer',color:tx,fontSize:22}}>←</button>           <b style={{fontSize:17,letterSpacing:1}}>🎲 LUDO</b>           <span style={{color:'#f59e0b',fontSize:13}}>🪙{profile.coins}</span>         </div>          <div style={{display:'flex',gap:5,flexWrap:'wrap',justifyContent:'center'}}>           {actP.map((p,i)=>(             <div key={p} style={{padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:'bold',               display:'flex',alignItems:'center',gap:5,               background:i===gs.ci?PC[p].c:(dark?'#1e293b':'white'),               color:i===gs.ci?'white':(dark?'#94a3b8':'#64748b'),               border:2px solid ${i===gs.ci?PC[p].c:'transparent'},               boxShadow:i===gs.ci?0 0 14px ${PC[p].c}66:'none',transition:'all .3s'}}>               <Chip color={i===gs.ci?'white':PC[p].c} size={8}/>               {gs.pl[p].name}               <span style={{fontSize:10,opacity:.6}}>{gs.pl[p].tokens.filter(t=>t.p>=57).length}/4</span>             </div>           ))}         </div>          <div style={{transform:scale(${scale}),transformOrigin:'top center',width:CS15,flexShrink:0}}>           <Board gs={gs} actP={actP} dark={dark} neon={neon} onTok={onTok}/>         </div>          <div style={{...card,padding:'14px 18px',display:'flex',flexDirection:'column',           alignItems:'center',gap:10,width:'100%',maxWidth:420}}>           <div style={{fontSize:13,opacity:.7,textAlign:'center',minHeight:18,fontStyle:'italic'}}>{gs.msg}</div>           <div style={{display:'flex',alignItems:'center',gap:18}}>             <Die val={dval} dis={!isH||gs.rolled||rolling||!!gs.winner} anim={rolling} onClick={rollDice}/>             <div>               <div style={{fontSize:11,opacity:.4,marginBottom:2}}>Current turn</div>               <div style={{display:'flex',alignItems:'center',gap:6,fontWeight:'bold'}}>                 <Chip color={PC[pk]?.c||'#888'} size={14}/>                 {gs.pl[pk]?.name}               </div>               <div style={{fontSize:11,opacity:.38,marginTop:2}}>                 {isH?'👆 Tap dice to roll':'🤖 AI is thinking…'}               </div>             </div>           </div>           <div style={{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'center'}}>             {['😂','🔥','😤','👏','😮','🎉','💀','❤️'].map(e=>(               <button key={e} onClick={()=>{setEmo(e);setTimeout(()=>setEmo(''),2000);}}                 style={{background:'none',border:'none',cursor:'pointer',fontSize:20,padding:2,lineHeight:1}}>{e}</button>             ))}           </div>         </div>         <div style={{fontSize:11,opacity:.22,textAlign:'center'}}>           ⭐ safe zone  |  🔢6 = exit + extra turn  |  Land on enemy = send home!         </div>         {emo&&(           <div style={{position:'fixed',top:'42%',left:'50%',transform:'translate(-50%,-50%)',             fontSize:86,animation:'floatUp 1.8s ease forwards',pointerEvents:'none',zIndex:300}}>             {emo}           </div>         )}       </div>     );   }   return null; }
+// ================= CORE LUDO ENGINE =================
+
+export const MP = [
+  [6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],
+  [0,6],[0,7],[0,8],[1,8],[2,8],[3,8],[4,8],[5,8],
+  [6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],
+  [8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],
+  [14,7],[14,6],[13,6],[12,6],[11,6],[10,6],[9,6],
+  [8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0]
+];
+
+export const PC = {
+  red:   { si: 0,  c:'#ef4444', hc:[[7,1],[7,2],[7,3],[7,4],[7,5]], tp:[[1,1],[3,1],[1,3],[3,3]] },
+  blue:  { si: 13, c:'#3b82f6', hc:[[1,7],[2,7],[3,7],[4,7],[5,7]], tp:[[1,10],[3,10],[1,12],[3,12]] },
+  green: { si: 26, c:'#22c55e', hc:[[7,13],[7,12],[7,11],[7,10],[7,9]], tp:[[11,10],[13,10],[11,12],[13,12]] },
+  yellow:{ si: 39, c:'#f59e0b', hc:[[13,7],[12,7],[11,7],[10,7],[9,7]], tp:[[11,1],[13,1],[11,3],[13,3]] },
+};
+
+export const SAFE = new Set([0,8,13,21,26,34,39,47]);
+export const PO = ["red","blue","green","yellow"];
+
+export const CS = 36;
+
+// ================= HELPERS =================
+
+export const CK = (c,r) => `${c},${r}`;
+
+export const coord = (pk,p) => {
+  if(p < 0) return null;
+  if(p >= 57) return null;
+
+  if(p < 52){
+    return MP[(PC[pk].si + p) % 52];
+  }
+
+  return PC[pk].hc[p - 52];
+};
+
+export const isSafe = (pk,p) => {
+  if(p < 0 || p >= 52) return true;
+  return SAFE.has((PC[pk].si + p) % 52);
+};
+
+// tokens that can move
+export const getMovable = (pk, tokens, d) => {
+  return tokens
+    .filter(t => {
+      if(t.p < 0) return d === 6;
+      return t.p + d <= 57;
+    })
+    .map(t => t.id);
+};
+
+// ================= MOVE ENGINE =================
+
+export const applyMove = (players, pk, tid, d, actP) => {
+  const tok = players[pk].tokens.find(t => t.id === tid);
+
+  let np = tok.p < 0 ? 0 : tok.p + d;
+
+  let newPlayers = {
+    ...players,
+    [pk]: {
+      ...players[pk],
+      tokens: players[pk].tokens.map(t =>
+        t.id === tid ? { ...t, p: np } : t
+      )
+    }
+  };
+
+  // kill logic
+  if(np < 52 && !isSafe(pk,np)){
+    const pos = MP[(PC[pk].si + np) % 52];
+
+    actP.forEach(op => {
+      if(op === pk) return;
+
+      newPlayers[op] = {
+        ...newPlayers[op],
+        tokens: newPlayers[op].tokens.map(t => {
+          if(t.p < 0 || t.p >= 52) return t;
+
+          const opPos = MP[(PC[op].si + t.p) % 52];
+
+          if(opPos[0] === pos[0] && opPos[1] === pos[1]){
+            return { ...t, p: -1 };
+          }
+
+          return t;
+        })
+      };
+    });
+  }
+
+  return newPlayers;
+};
+
+// win check
+export const isWin = (tokens) =>
+  tokens.every(t => t.p >= 57);
+// ================= GAME STATE =================
+
+export const initialState = (players, actP) => ({
+  pl: players,
+  ci: 0,              // current index
+  dice: null,
+  rolled: false,
+  mv: [],
+  winner: null,
+  msg: `${players[actP[0]].name}'s turn 🎲`
+});
+
+// ================= TURN SYSTEM =================
+
+export const nextTurn = (state, actP, extra = false) => {
+  if (state.winner) return state;
+
+  if (extra) {
+    const pk = actP[state.ci];
+    return {
+      ...state,
+      dice: null,
+      rolled: false,
+      mv: [],
+      msg: `${state.pl[pk].name} gets extra turn 🎲`
+    };
+  }
+
+  const next = (state.ci + 1) % actP.length;
+  const pk = actP[next];
+
+  return {
+    ...state,
+    ci: next,
+    dice: null,
+    rolled: false,
+    mv: [],
+    msg: `${state.pl[pk].name}'s turn 🎲`
+  };
+};
+
+// ================= REDUCER =================
+
+import { getMovable, applyMove, isWin } from "./engine";
+
+export function reducer(state, action) {
+  switch (action.type) {
+
+    // 🎲 INIT GAME
+    case "INIT":
+      return initialState(action.players, action.actP);
+
+    // 🎲 ROLL DICE
+    case "ROLL": {
+      const pk = action.actP[state.ci];
+      const mv = getMovable(pk, state.pl[pk].tokens, action.d);
+
+      return {
+        ...state,
+        dice: action.d,
+        rolled: true,
+        mv,
+        msg: mv.length
+          ? `${state.pl[pk].name} rolled ${action.d} — pick token`
+          : `${state.pl[pk].name} rolled ${action.d} — no moves`
+      };
+    }
+
+    // 🚫 PASS TURN
+    case "PASS":
+      return nextTurn(state, action.actP, state.dice === 6);
+
+    // 🚀 MOVE TOKEN
+    case "MOVE": {
+      const pk = action.actP[state.ci];
+      const d = state.dice;
+
+      const updated = applyMove(
+        state.pl,
+        pk,
+        action.tid,
+        d,
+        action.actP
+      );
+
+      // 🏆 WIN CHECK
+      if (isWin(updated[pk].tokens)) {
+        return {
+          ...state,
+          pl: updated,
+          winner: pk,
+          mv: [],
+          rolled: false,
+          msg: `🏆 ${updated[pk].name} WINS!`
+        };
+      }
+
+      // 🎯 extra turn on 6
+      return nextTurn(
+        {
+          ...state,
+          pl: updated,
+          mv: [],
+          rolled: false
+        },
+        action.actP,
+        d === 6
+      );
+    }
+
+    default:
+      return state;
+  }
+}
+import React from "react";
+import { MP, PC, coord, CS } from "./engine";
+
+/* ================= BUTTON ================= */
+export function Btn({ ch, onClick, g = "#6366f1", s = {} }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "10px 14px",
+        borderRadius: 10,
+        border: "none",
+        cursor: "pointer",
+        background: g,
+        color: "white",
+        fontWeight: "bold",
+        transition: "0.2s",
+        ...s
+      }}
+    >
+      {ch}
+    </button>
+  );
+}
+
+/* ================= CHIP ================= */
+export function Chip({ color = "#fff", size = 12 }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: color,
+        border: "1px solid rgba(0,0,0,0.2)"
+      }}
+    />
+  );
+}
+
+/* ================= DICE ================= */
+export function Die({ val, onClick, dis }) {
+  return (
+    <button
+      disabled={dis}
+      onClick={onClick}
+      style={{
+        width: 65,
+        height: 65,
+        fontSize: 22,
+        borderRadius: 12,
+        border: "none",
+        background: "#111827",
+        color: "white",
+        cursor: dis ? "not-allowed" : "pointer",
+        boxShadow: "0 6px 20px rgba(0,0,0,0.3)"
+      }}
+    >
+      🎲 {val || "-"}
+    </button>
+  );
+}
+
+/* ================= BOARD ================= */
+export function Board({ gs, actP, onTok }) {
+  const SIZE = CS * 15;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: SIZE,
+        height: SIZE,
+        display: "grid",
+        gridTemplateColumns: `repeat(15, ${CS}px)`,
+        gridTemplateRows: `repeat(15, ${CS}px)`,
+        border: "2px solid #334155",
+        background: "#0f172a",
+        borderRadius: 10,
+        overflow: "hidden"
+      }}
+    >
+      {/* GRID CELLS */}
+      {Array.from({ length: 225 }).map((_, i) => {
+        const c = i % 15;
+        const r = Math.floor(i / 15);
+
+        const isCenter = c === 7 && r === 7;
+
+        return (
+          <div
+            key={i}
+            style={{
+              width: CS,
+              height: CS,
+              border: "1px solid #1f2937",
+              background: isCenter ? "#111827" : "#0b1220"
+            }}
+          />
+        );
+      })}
+
+      {/* TOKENS */}
+      {actP.map(pk =>
+        gs.pl[pk].tokens.map(t => {
+          let x = 0,
+            y = 0;
+
+          if (t.p < 0) {
+            const [c, r] = PC[pk].tp[t.id];
+            x = c * CS;
+            y = r * CS;
+          } else {
+            const [c, r] = coord(pk, t.p);
+            x = c * CS;
+            y = r * CS;
+          }
+
+          const canMove =
+            !gs.winner &&
+            gs.mv.includes(t.id) &&
+            actP[gs.ci] === pk;
+
+          return (
+            <div
+              key={pk + "-" + t.id}
+              onClick={() => canMove && onTok(pk, t.id)}
+              style={{
+                position: "absolute",
+                left: x + CS / 4,
+                top: y + CS / 4,
+                width: CS / 2,
+                height: CS / 2,
+                borderRadius: "50%",
+                background: PC[pk].c,
+                border: canMove ? "3px solid yellow" : "2px solid white",
+                cursor: canMove ? "pointer" : "default",
+                boxShadow: "0 3px 10px rgba(0,0,0,0.5)"
+              }}
+            />
+          );
+        })
+      )}
+    </div>
+  );
+        }
+import React, { useReducer, useState } from "react";
+
+import { MP, PC, PO, getMovable } from "./engine";
+import { reducer } from "./reducer";
+import { Board, Die, Btn, Chip } from "./ui";
+
+/* ================= APP ================= */
+
+export default function App() {
+  const [screen, setScreen] = useState("menu"); // menu | setup | play
+  const [numP, setNumP] = useState(2);
+
+  const [setup, setSetup] = useState({
+    red: { name: "Red", type: "human", ai: "easy" },
+    blue: { name: "Blue", type: "ai", ai: "easy" },
+    green: { name: "Green", type: "ai", ai: "easy" },
+    yellow: { name: "Yellow", type: "ai", ai: "easy" }
+  });
+
+  const actP = PO.slice(0, numP);
+
+  const [gs, dispatch] = useReducer(reducer, null);
+
+  const startGame = () => {
+    const players = {};
+
+    actP.forEach(pk => {
+      players[pk] = {
+        name: setup[pk].name,
+        type: setup[pk].type,
+        ai: setup[pk].ai,
+        tokens: [
+          { id: 0, p: -1 },
+          { id: 1, p: -1 },
+          { id: 2, p: -1 },
+          { id: 3, p: -1 }
+        ]
+      };
+    });
+
+    dispatch({ type: "INIT", players, actP });
+    setScreen("play");
+  };
+
+  /* ================= DICE ================= */
+  const rollDice = () => {
+    if (!gs || gs.rolled) return;
+    const d = Math.floor(Math.random() * 6) + 1;
+
+    dispatch({ type: "ROLL", d, actP });
+
+    const pk = actP[gs.ci];
+    const mv = getMovable(pk, gs.pl[pk].tokens, d);
+
+    if (!mv.length) {
+      setTimeout(() => dispatch({ type: "PASS", actP }), 800);
+    }
+  };
+
+  const onTok = (pk, tid) => {
+    dispatch({ type: "MOVE", tid, actP });
+  };
+
+  /* ================= MENU ================= */
+  if (screen === "menu") {
+    return (
+      <div style={styles.menu}>
+        <h1 style={{ fontSize: 48 }}>🎲 LUDO GAME</h1>
+
+        <Btn ch="▶ Play Game" onClick={() => setScreen("setup")} />
+      </div>
+    );
+  }
+
+  /* ================= SETUP ================= */
+  if (screen === "setup") {
+    return (
+      <div style={styles.setup}>
+        <h2>⚙️ Setup</h2>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          {[2, 3, 4].map(n => (
+            <Btn
+              key={n}
+              ch={`${n} Players`}
+              g={numP === n ? "#22c55e" : "#334155"}
+              onClick={() => setNumP(n)}
+            />
+          ))}
+        </div>
+
+        {actP.map(pk => (
+          <div key={pk} style={styles.card}>
+            <Chip color={PC[pk].c} size={14} />
+            <input
+              value={setup[pk].name}
+              onChange={e =>
+                setSetup(s => ({
+                  ...s,
+                  [pk]: { ...s[pk], name: e.target.value }
+                }))
+              }
+            />
+          </div>
+        ))}
+
+        <Btn ch="🚀 Start Game" onClick={startGame} />
+      </div>
+    );
+  }
+
+  /* ================= PLAY SCREEN ================= */
+  if (!gs) return null;
+
+  const pk = actP[gs.ci];
+
+  return (
+    <div style={styles.play}>
+      <h3>🎲 Turn: {gs.pl[pk]?.name}</h3>
+
+      {/* BOARD */}
+      <Board gs={gs} actP={actP} onTok={onTok} />
+
+      {/* DICE */}
+      <div style={styles.panel}>
+        <Die val={gs.dice} onClick={rollDice} dis={gs.rolled} />
+
+        <Btn
+          ch="Pass"
+          g="#ef4444"
+          onClick={() => dispatch({ type: "PASS", actP })}
+        />
+      </div>
+
+      {/* MESSAGE */}
+      <p>{gs.msg}</p>
+
+      {/* WINNER */}
+      {gs.winner && (
+        <div style={styles.win}>
+          🏆 {gs.pl[gs.winner].name} Wins!
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================= STYLES ================= */
+
+const styles = {
+  menu: {
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 20,
+    background: "#0f172a",
+    color: "white"
+  },
+
+  setup: {
+    padding: 20,
+    color: "white",
+    background: "#111827",
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    gap: 12
+  },
+
+  card: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    background: "#1f2937",
+    borderRadius: 10
+  },
+
+  play: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    background: "#0f172a",
+    color: "white",
+    minHeight: "100vh"
+  },
+
+  panel: {
+    display: "flex",
+    gap: 10,
+    alignItems: "center"
+  },
+
+  win: {
+    fontSize: 24,
+    color: "#22c55e",
+    fontWeight: "bold"
+  }
+};
